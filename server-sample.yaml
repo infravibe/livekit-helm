@@ -61,11 +61,15 @@ loadBalancer:
   # staticIpName: <nameofIpAddressCreated>
   # certificateName: <nameOfCert>
   # clusterIssuer: letsencrypt-prod
+  # For ALB: specify ACM certificate ARN (recommended) or rely on auto-discovery.
+  # certificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abc-1234-5678
+  # Redirect HTTP to HTTPS at the ALB level (requires certificateArn).
+  # sslRedirect: true
   tls:
   #   - hosts:
   #     - livekit.myhost.com
-  #   with alb, certificates needs to reside in ACM for self-discovery
-  #   with do, use cert-manager and create certificate for turn. Load balancer is autoamtic
+  #   with alb, set certificateArn above; secretName is not used (TLS terminates at the ALB)
+  #   with do, use cert-manager and create certificate for turn. Load balancer is automatic
   #   with gke, specify one or more secrets to use for the certificate
   #   see: https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-multi-ssl#specifying_certificates_for_your_ingress
   #     secretName: <mysecret>

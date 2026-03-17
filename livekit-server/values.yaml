@@ -67,6 +67,12 @@ loadBalancer:
   type: disable
   servicePort: 80
   annotations: {}
+  # For ALB with ACM TLS: specify the ACM certificate ARN explicitly.
+  # If omitted, the ALB controller falls back to ACM auto-discovery via domain matching.
+  # certificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abc-1234-5678
+  # Redirect HTTP (port 80) to HTTPS (port 443) at the ALB level.
+  # Only effective when certificateArn is set (requires ALB to listen on both ports).
+  # sslRedirect: false
 
 turnLoadbalancer:
   enable: true

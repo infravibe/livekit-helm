@@ -16,9 +16,14 @@ livekit:
     secretName: <turn-tls-secret>
 
 loadBalancer:
-  # With ALB, TLS certificates are managed by ACM
-  # Ensure you have issued a certificate for your domain in ACM
+  # With ALB, TLS certificates are managed by ACM.
+  # Ensure you have issued a certificate for your domain in ACM.
   type: alb
+  # Explicitly specify the ACM certificate ARN (recommended).
+  # If omitted, the ALB controller attempts auto-discovery via domain matching.
+  certificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abc-1234-5678
+  # Redirect HTTP to HTTPS at the ALB level (requires certificateArn).
+  sslRedirect: true
   tls:
     - hosts:
         - <your-primary-domain>

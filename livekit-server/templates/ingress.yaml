@@ -15,7 +15,15 @@ metadata:
   {{- if eq .Values.loadBalancer.type "alb" }}
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
-    {{- if .Values.loadBalancer.tls }}
+    {{- if .Values.loadBalancer.certificateArn }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.loadBalancer.certificateArn }}
+    {{- if .Values.loadBalancer.sslRedirect }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    {{- else }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    {{- end }}
+    {{- else if .Values.loadBalancer.tls }}
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     {{- end }}
   {{- end }}

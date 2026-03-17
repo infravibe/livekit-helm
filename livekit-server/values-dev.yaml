@@ -1,0 +1,155 @@
+# values-dev.yaml — LiveKit Server on AWS EKS (Dev)
+#
+# Topology:
+#   - ALB (AWS Load Balancer Controller) terminates TLS via ACM
+#   - HTTP → HTTPS redirect at the ALB
+#   - WebSocket traffic proxied to livekit-server NodePort (7880)
+#   - UDP/TCP media ports (50000-60000, 7881) exposed directly via hostNetwork
+#   - STUN used by the server to auto-detect node public IP (use_external_ip)
+#   - STUNner deployed in-cluster as TURN fallback for clients behind strict NATs
+#
+# Prerequisites:
+#   - AWS Load Balancer Controller installed in the cluster
+#   - ACM certificate issued and validated for your domain
+#   - STUNner deployed (https://github.com/l7mp/stunner-helm) with longterm auth
+#   - Redis (ElastiCache or in-cluster) accessible from the EKS nodes
+#   - Node security group allows inbound: UDP 50000-60000, TCP 7881 from 0.0.0.0/0
+#
+# Usage:
+#   helm install livekit livekit/livekit-server \
+#     --namespace livekit --create-namespace \
+#     --values values-dev.yaml
+
+replicaCount: 1
+
+image:
+  repository: livekit/livekit-server
+  pullPolicy: IfNotPresent
+
+# 5h grace period allows in-flight sessions to drain before pod is killed
+terminationGracePeriodSeconds: 18000
+
+livekit:
+  port: 7880
+  log_level: debug
+
+  rtc:
+    tcp_port: 7881
+    port_range_start: 50000
+    port_range_end: 60000
+
+    # Required on EKS: nodes have private IPs; STUN resolves the public IP
+    # that is advertised to WebRTC clients as ICE host candidates.
+    use_external_ip: true
+
+    # STUN servers advertised to clients for ICE candidate gathering.
+    # STUNner exposes a STUN endpoint on the same address as its TURN service,
+    # so clients can gather server-reflexive candidates via STUNner directly.
+    # Replace with your STUNner LoadBalancer hostname or IP.
+    stun_servers:
+      - stun.l.google.com:19302
+
+    # External TURN servers pushed to clients as ICE relay candidates.
+    # Used when direct UDP and TCP paths both fail (strict corporate NAT / firewall).
+    # STUNner uses longterm (HMAC-SHA1) auth — set the same shared secret here
+    # that STUNner is configured with (authSecret in the STUNner GatewayConfig).
+    turn_servers:
+      # UDP/3478 — primary TURN relay, lowest latency
+      - host: stunner.dev.example.com
+        port: 3478
+        protocol: udp
+        secret: <stunner-shared-secret>   # replace with STUNner authSecret
+        ttl: 86400
+      # TURN/TLS/443 — fallback for clients that block UDP and non-HTTPS TCP
+      - host: stunner.dev.example.com
+        port: 443
+        protocol: tls
+        secret: <stunner-shared-secret>   # same secret
+        ttl: 86400
+
+  redis:
+    address: <redis-host>:6379
+    # password: <redis-password>
+
+  # API keys — use storeKeysInSecret below in production; inline is fine for dev
+  keys:
+    devkey: <dev-api-secret>
+
+  # Embedded TURN is disabled — STUNner handles TURN relay externally.
+  # If you later need an embedded TURN server, set enabled: true and provide
+  # a domain + TLS secret (secretName), then re-enable turnLoadbalancer.
+  turn:
+    enabled: false
+    loadBalancerAnnotations: {}
+
+  # If you are using any manual dispatcher services, uncomment below
+#  webhook:
+#    api_key: <dev-api-key>
+#    urls:
+#      - <dispatcher url>/<endpoint> # e.g. http://livekit-dispatcher.livekit.svc.cluster.local/webhook
+
+# ALB with ACM TLS
+loadBalancer:
+  type: alb
+  # Service port — ALB routes HTTPS:443 → NodePort:80 → pod:7880
+  servicePort: 80
+  # ACM certificate ARN for your domain (us-east-1 or the cluster's region)
+  certificateArn: <arn:aws:acm:us-east-1:123456789012:certificate/replace-me>
+  # Redirect all HTTP traffic to HTTPS at the ALB
+  sslRedirect: true
+  # Target hostname — must match the ACM certificate's CN / SAN
+  tls:
+    - hosts:
+        - livekit.dev.example.com
+  # Additional ALB annotations (optional)
+  # annotations:
+  #   alb.ingress.kubernetes.io/target-type: ip          # use ip mode with VPC CNI
+  #   alb.ingress.kubernetes.io/group.name: livekit-dev  # share ALB across ingresses
+
+# Disable the embedded TURN LoadBalancer since TURN is handled by STUNner
+turnLoadbalancer:
+  enable: false
+
+# hostNetwork is required so pods bind the UDP/TCP media ports directly on
+# the node's public IP. Istio/Linkerd sidecars must be disabled because they
+# cannot intercept raw UDP or share the host network namespace cleanly.
+podHostNetwork: true
+
+podAnnotations:
+  sidecar.istio.io/inject: "false"
+  linkerd.io/inject: disabled
+
+podSecurityContext: {}
+securityContext: {}
+
+# No autoscaling for dev — single replica is sufficient
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 60
+
+# Pin livekit-server pods to dedicated nodes to avoid port conflicts
+# (hostNetwork means only one livekit-server pod can run per node)
+nodeSelector:
+  {}
+  # eks.amazonaws.com/nodegroup: livekit-dev
+
+# Modest resources for dev; scale up for production
+resources:
+  limits:
+    cpu: 4000m
+    memory: 2048Mi
+  requests:
+    cpu: 2000m
+    memory: 1024Mi
+
+tolerations: []
+affinity: {}
+deploymentStrategy: {}
+deploymentAnnotations: {}
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
