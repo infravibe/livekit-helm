@@ -45,6 +45,8 @@ apiVersion: extensions/v1beta1
 spec:
   {{- if eq .Values.loadBalancer.type "do" }}
   ingressClassName: nginx
+  {{- else if eq .Values.loadBalancer.type "alb" }}
+  ingressClassName: alb
   {{- end }}
   rules:
   # In order to work with cert manager on DO, we cannot set us as a default backend
